@@ -120,7 +120,7 @@ def exam_right() -> bool:
             except (NoSuchElementException, StaleElementReferenceException):
                 ...
             time.sleep(1)
-    except NoSuchElementException:
+    except (NoSuchElementException, JavascriptException):
         ...    
     return is_test
 
@@ -153,12 +153,13 @@ def questionnaire():
     submit.click()
     browser.implicitly_wait(60)
 
-    wait = WebDriverWait(browser, timeout=2)
-    alert = wait.until(lambda d : d.switch_to.alert)
-    alert.accept()
-    wait = WebDriverWait(browser, timeout=2)
-    alert = wait.until(lambda d : d.switch_to.alert)
-    alert.accept()
+    for _ in range(2):
+        try:
+            wait = WebDriverWait(browser, timeout=2)
+            alert = wait.until(lambda d : d.switch_to.alert)
+            alert.accept()
+        except NoAlertPresentException:
+            ...
 
     browser.switch_to.window(browser.window_handles[0])
 
