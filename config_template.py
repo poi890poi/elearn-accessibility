@@ -25,6 +25,7 @@ ANS_OPTIONS = {
 }
 
 class PlayerType(Enum):
+    INVALID = -1
     MP = 0
     JP = 1
 

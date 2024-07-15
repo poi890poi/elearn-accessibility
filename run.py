@@ -138,8 +138,12 @@ def questionnaire():
     browser.execute_script(begin.get_attribute('onclick'))
     browser.implicitly_wait(60)
 
-    wait = WebDriverWait(browser, timeout=2)
-    wait.until(expected_conditions.number_of_windows_to_be(2))
+    try:
+        wait = WebDriverWait(browser, timeout=2)
+        wait.until(expected_conditions.number_of_windows_to_be(2))
+    except TimeoutException:
+        print('Unable to find questionnaire window.')
+        return
     for w_ in browser.window_handles:
         print('window', w_.title)
     browser.switch_to.window(browser.window_handles[1])
@@ -206,22 +210,8 @@ def video_play_jp(lesson: str, title: str):
             print('dashPlayer initialization timed out.')
             break
         time.sleep(2)
-    wait_video_finish(duration, lambda : browser.execute_script('return dashPlayer.isPaused();'))
-    # timeout = time.time() + duration
-    # while True and duration:
-    #     ActionChains(browser) \
-    #         .move_by_offset(0, 15) \
-    #         .perform()
-    #     if browser.execute_script('return dashPlayer.isPaused();'):
-    #         break
-    #     if time.time() >= timeout:
-    #         print(f'Video playback timed out. duration={duration}')
-    #         break
-    #     time.sleep(2)
-    #     ActionChains(browser) \
-    #         .move_by_offset(0, -15) \
-    #         .perform()
-    
+    wait_video_finish(duration, func = lambda : browser.execute_script('return dashPlayer.isPaused();'))
+
 def video_play_mp(lesson: str, title: str):
     print('Playing video {} ({}) with MP player...'.format(lesson, title))
 
@@ -230,7 +220,6 @@ def video_play_mp(lesson: str, title: str):
     video = mv.find_element(By.TAG_NAME, 'video')
     try:
         wait = WebDriverWait(browser, timeout=60)
-        # cPb.time === -1
         wait.until(lambda d : browser.execute_script("return (typeof cPb !== 'undefined');"))
         browser.execute_script(f'cPb.SetSpeed({PLAYBACK_RATE});')
         browser.execute_script('cPb.SetVol(0);')
@@ -242,34 +231,25 @@ def video_play_mp(lesson: str, title: str):
     ply_play = browser.find_element(By.ID, 'ply_play')
     ply_pause = browser.find_element(By.ID, 'ply_pause')
     duration = browser.execute_script("return document.getElementsByTagName('video')[0].duration;")
-    wait_video_finish(duration, lambda : ply_play.is_displayed())
-    # timeout = time.time() + duration
-    # while True:
-    #     ActionChains(browser) \
-    #         .move_by_offset(0, 15) \
-    #         .perform()
-    #     try:
-    #         break
-    #     except TimeoutException:
-    #         ...
-    #     ActionChains(browser) \
-    #         .move_by_offset(0, -15) \
-    #         .perform()
-    #     if time.time() >= timeout:
-    #         print(f'Video playback timed out. duration={duration}')
-    #         break
+    wait_video_finish(duration, func = lambda : browser.execute_script('return (cPb.time===-1);'))
+    # wait_video_finish(duration, driver_wait = lambda : ply_play.is_displayed())
 
 def video_play(lesson: str, title: str) -> PlayerType:
-    player_type = PlayerType.MP
+    player_type = PlayerType.INVALID
     try:
         scoMainFrame = browser.find_element(By.NAME, 'scoMainFrame')
         browser.switch_to.frame(scoMainFrame)
+        player_type = PlayerType.MP
         video_play_mp(lesson, title)
     except NoSuchElementException:
+        ...
+    try:
         f_ = browser.find_element(By.TAG_NAME, 'iframe')
         browser.switch_to.frame(f_)
         player_type = PlayerType.JP
         video_play_jp(lesson, title)
+    except NoSuchElementException:
+        ...
     print(f'Video {title} finished.')
     return player_type
 
@@ -350,9 +330,8 @@ for c_, *_ in COURSES:
 
             try:
                 switch_to_right_panel()
-                video_play(a_, t_)
-                if exam_right(): break
-
+                if video_play(a_, t_) == PlayerType.INVALID:
+                    if exam_right(): break
             except (NoSuchElementException, JavascriptException):
                 traceback.print_exc()
                 ...
