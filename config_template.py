@@ -27,3 +27,9 @@ ANS_OPTIONS = {
 class PlayerType(Enum):
     MP = 0
     JP = 1
+
+class WebDriverType(Enum):
+    EDGE = 0
+    CHROME = 1
+
+WEBDRIVER = WebDriverType.CHROME

@@ -30,7 +30,10 @@ def switch_to_left_panel():
     f_ = browser.find_element(By.XPATH, 'html/frameset/frameset/frame[@id="moocSysbar"]')
     browser.switch_to.frame(f_)
 
-def exam_opened() -> bool:
+def exam_left() -> bool:
+    '''
+    The exam is opened from the left panel.
+    '''
     is_test = False
 
     switch_to_left_panel()
@@ -55,10 +58,12 @@ def exam_opened() -> bool:
 
     return is_test
 
-def exam_embedded() -> bool:
+def exam_right() -> bool:
+    '''
+    The exam is opened from the right panel, as a lesson.
+    '''
     is_test = False
     try:
-        introbtn = browser.find_element(By.CSS_SELECTOR, 'span.introbtn')
         browser.execute_script('go(goExam,500);')
         browser.implicitly_wait(5)
         print('Performing test...')
@@ -119,6 +124,44 @@ def exam_embedded() -> bool:
         ...    
     return is_test
 
+def questionnaire():
+    print('Questionnaire...')
+    switch_to_left_panel()
+    moocSidebar = browser.find_element(By.ID, 'moocSidebar')
+    q_ = moocSidebar.find_element(By.PARTIAL_LINK_TEXT, '問卷')
+    q_.click()
+    browser.implicitly_wait(60)
+
+    switch_to_right_panel()
+    begin = browser.find_element(By.CSS_SELECTOR, 'div[onclick]')
+    # q_ = main_text.find_element(By.XPATH, './../..')
+    browser.execute_script(begin.get_attribute('onclick'))
+    browser.implicitly_wait(60)
+
+    wait = WebDriverWait(browser, timeout=2)
+    wait.until(expected_conditions.number_of_windows_to_be(2))
+    for w_ in browser.window_handles:
+        print('window', w_.title)
+    browser.switch_to.window(browser.window_handles[1])
+
+    questions = browser.find_elements(By.CSS_SELECTOR, 'ol[type="a"]')
+    for q_ in questions:
+        options = q_.find_elements(By.TAG_NAME, 'input')
+        options[0].click()
+
+    submit = browser.find_element(By.CSS_SELECTOR, 'input[type="submit"]')
+    submit.click()
+    browser.implicitly_wait(60)
+
+    wait = WebDriverWait(browser, timeout=2)
+    alert = wait.until(lambda d : d.switch_to.alert)
+    alert.accept()
+    wait = WebDriverWait(browser, timeout=2)
+    alert = wait.until(lambda d : d.switch_to.alert)
+    alert.accept()
+
+    browser.switch_to.window(browser.window_handles[0])
+
 def wait_video_finish(duration: float, func: Callable[[], None],
                       driver_wait: Callable[[], None] = None):
     timeout = time.time() + duration
@@ -144,15 +187,11 @@ def wait_video_finish(duration: float, func: Callable[[], None],
             .perform()
 
 def video_play_jp(lesson: str, title: str):
+    try:
+        browser.execute_script('dashPlayer.isReady();')
+    except JavascriptException:
+        return
     print('Playing video {} ({}) with JP player (DashPlayer)...'.format(lesson, title))
-    # myjp
-    # dashPlayer
-    # isReady
-    # isPaused
-    # setMute
-    # setPlaybackRate
-    # play
-    # setVolume
     timeout = time.time() + 60
     duration = 0
     while True:
@@ -190,6 +229,7 @@ def video_play_mp(lesson: str, title: str):
     video = mv.find_element(By.TAG_NAME, 'video')
     try:
         wait = WebDriverWait(browser, timeout=60)
+        # cPb.time === -1
         wait.until(lambda d : browser.execute_script("return (typeof cPb !== 'undefined');"))
         browser.execute_script(f'cPb.SetSpeed({PLAYBACK_RATE});')
         browser.execute_script('cPb.SetVol(0);')
@@ -201,7 +241,7 @@ def video_play_mp(lesson: str, title: str):
     ply_play = browser.find_element(By.ID, 'ply_play')
     ply_pause = browser.find_element(By.ID, 'ply_pause')
     duration = browser.execute_script("return document.getElementsByTagName('video')[0].duration;")
-    wait_video_finish(duration, lambda d : ply_play.is_displayed())
+    wait_video_finish(duration, lambda : ply_play.is_displayed())
     # timeout = time.time() + duration
     # while True:
     #     ActionChains(browser) \
@@ -234,13 +274,14 @@ def video_play(lesson: str, title: str) -> PlayerType:
 
 # Open course page then login
 for c_, *_ in COURSES:
-    # browser = webdriver.Edge()
-    chrome_options = webdriver.ChromeOptions()
-    # chrome_options.add_argument('--blink-settings=imagesEnabled=false')
-    chrome_options.add_argument('--incognito')
-    # chrome_options.add_argument('--allow-sandbox-debugging')
-    browser = webdriver.Chrome(options=chrome_options)
-    # browser = webdriver.Edge(options=chrome_options)
+    if WEBDRIVER == WebDriverType.CHROME:
+        chrome_options = webdriver.ChromeOptions()
+        # chrome_options.add_argument('--blink-settings=imagesEnabled=false')
+        chrome_options.add_argument('--incognito')
+        browser = webdriver.Chrome(options=chrome_options)
+    elif WEBDRIVER == WebDriverType.EDGE:
+        browser = webdriver.Edge()
+        browser = webdriver.Edge(options=chrome_options)
 
     print('Opening course at {}'.format(c_))
     browser.get(c_)
@@ -309,7 +350,7 @@ for c_, *_ in COURSES:
             try:
                 switch_to_right_panel()
                 video_play(a_, t_)
-                if exam_embedded(): break
+                if exam_right(): break
 
             except (NoSuchElementException, JavascriptException):
                 traceback.print_exc()
@@ -320,6 +361,9 @@ for c_, *_ in COURSES:
         browser.switch_to.frame(f_)
         pathtree = browser.find_element(By.ID, 'pathtree')
         browser.switch_to.frame(pathtree)
+
+    questionnaire()
+
     browser.implicitly_wait(30)
     browser.close()
     print(f'Course {coursename} finished.')
