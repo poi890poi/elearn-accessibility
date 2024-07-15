@@ -1,6 +1,10 @@
+import logging.handlers
 import time
 import traceback
 import os.path
+import sys
+import logging
+import logging.handlers
 from collections.abc import Callable, Awaitable
 
 from selenium import webdriver
@@ -14,26 +18,31 @@ from config import *
 
 
 browser = None
+logger = logging.getLogger(__name__)
 
 def list_script_src():
+    global browser, logger
     scripts = browser.find_elements(By.TAG_NAME, 'script')
     for s_ in scripts:
-        print(s_.get_attribute('src'))
+        logger.info(s_.get_attribute('src'))
 
 def switch_to_right_panel():
+    global browser, logger
     browser.switch_to.default_content()
     f_ = browser.find_element(By.XPATH, 'html/frameset/frameset/frameset/frameset/frame[@id="s_main"]')
     browser.switch_to.frame(f_)
 
 def switch_to_left_panel():
+    global browser, logger
     browser.switch_to.default_content()
     f_ = browser.find_element(By.XPATH, 'html/frameset/frameset/frame[@id="moocSysbar"]')
     browser.switch_to.frame(f_)
 
-def exam_left() -> bool:
+def exam_left(answers: str) -> bool:
     '''
     The exam is opened from the left panel.
     '''
+    global browser, logger
     is_test = False
 
     switch_to_left_panel()
@@ -44,16 +53,32 @@ def exam_left() -> bool:
 
     switch_to_right_panel()
     main_text = moocSidebar.find_element(By.PARTIAL_LINK_TEXT, '進行測驗')
-    browser.execute_script(main_text.get_attribute('onclick'))
+    q_ = main_text.find_element(By.XPATH, './../..')
+    browser.execute_script(q_.get_attribute('onclick'))
     browser.implicitly_wait(60)
 
-    wait.until(expected_conditions.number_of_windows_to_be(2))
+    try:
+        wait = WebDriverWait(browser, timeout=2)
+        wait.until(expected_conditions.number_of_windows_to_be(2))
+    except TimeoutException:
+        logger.warning('Unable to find exam window.')
+        return
     for w_ in browser.window_handles:
-        print('window', w_.title)
+        logger.info('window', w_.title)
     browser.switch_to.window(browser.window_handles[1])
 
     examBegin = browser.find_element(By.CSS_SELECTOR, 'input[value="開始作答"]')
     examBegin.click()
+
+    questions = browser.find_elements(By.CSS_SELECTOR, 'ol[type="a"]')
+    aindex = 0
+    for q_ in questions:
+        a_ = int(ANS_OPTIONS[answers[aindex]][-1]) - 1
+        options = q_.find_elements(By.TAG_NAME, 'input')
+        options[a_].click()
+        aindex += 1
+
+    input('...')
     browser.switch_to.window(browser.window_handles[0])
 
     return is_test
@@ -62,11 +87,12 @@ def exam_right() -> bool:
     '''
     The exam is opened from the right panel, as a lesson.
     '''
+    global browser, logger
     is_test = False
     try:
         browser.execute_script('go(goExam,500);')
         browser.implicitly_wait(5)
-        print('Performing test...')
+        logger.info('Performing test...')
         is_test = True
         exam_index = 0
         while True:
@@ -78,7 +104,7 @@ def exam_right() -> bool:
                     try:
                         ans_ = ans_.replace('(', '').upper()
                         a_ = ANS_OPTIONS[ans_[0]]
-                        print('Answer {} selected for question {}.'.format(ans_, q_))
+                        logger.info('Answer {} selected for question {}.'.format(ans_, q_))
                         option = browser.find_element(By.ID, a_)
                         wait = WebDriverWait(browser, timeout=1800)
                         wait.until(lambda d : option.is_displayed())
@@ -96,7 +122,7 @@ def exam_right() -> bool:
                     wait = WebDriverWait(browser, timeout=2)
                     wait.until(lambda d : resultbtn.is_displayed())
                     browser.execute_script('defaultOption();go(goResult,500);')
-                    print('Test passed.')
+                    logger.info('Test passed.')
                     break
                 except (NoSuchElementException, StaleElementReferenceException, TimeoutException):
                     ...
@@ -107,10 +133,10 @@ def exam_right() -> bool:
                     score = browser.find_element(By.CSS_SELECTOR, '#container span.score')
                     score = score.get_attribute('class')
                     if 'pass_color' in score:
-                        print('Test passed.')
+                        logger.info('Test passed.')
                         break
                     elif 'nopass_color' in score:
-                        print('Test failed. Please re-test.')
+                        logger.warning('Test failed. Please re-test.')
                         browser.execute_script('go(goIntro,500);')
                         browser.implicitly_wait(5)
                 except (NoSuchElementException, StaleElementReferenceException, TimeoutException):
@@ -125,7 +151,8 @@ def exam_right() -> bool:
     return is_test
 
 def questionnaire():
-    print('Questionnaire...')
+    global browser, logger
+    logger.info('Questionnaire...')
     switch_to_left_panel()
     moocSidebar = browser.find_element(By.ID, 'moocSidebar')
     q_ = moocSidebar.find_element(By.PARTIAL_LINK_TEXT, '問卷')
@@ -134,7 +161,6 @@ def questionnaire():
 
     switch_to_right_panel()
     begin = browser.find_element(By.CSS_SELECTOR, 'div[onclick]')
-    # q_ = main_text.find_element(By.XPATH, './../..')
     browser.execute_script(begin.get_attribute('onclick'))
     browser.implicitly_wait(60)
 
@@ -142,10 +168,10 @@ def questionnaire():
         wait = WebDriverWait(browser, timeout=2)
         wait.until(expected_conditions.number_of_windows_to_be(2))
     except TimeoutException:
-        print('Unable to find questionnaire window.')
+        logger.warning('Unable to find questionnaire window.')
         return
     for w_ in browser.window_handles:
-        print('window', w_.title)
+        logger.debug('window', w_.title)
     browser.switch_to.window(browser.window_handles[1])
 
     questions = browser.find_elements(By.CSS_SELECTOR, 'ol[type="a"]')
@@ -164,13 +190,14 @@ def questionnaire():
             alert.accept()
         except NoAlertPresentException:
             ...
-    
-    print('Questionnaire submitted.')
+
+    logger.info('Questionnaire submitted.')
 
     browser.switch_to.window(browser.window_handles[0])
 
 def wait_video_finish(duration: float, func: Callable[[], None],
                       driver_wait: Callable[[], None] = None):
+    global browser, logger
     timeout = time.time() + duration
     while True and duration:
         ActionChains(browser) \
@@ -186,7 +213,7 @@ def wait_video_finish(duration: float, func: Callable[[], None],
         elif func():
             break
         if time.time() >= timeout:
-            print(f'Video playback timed out. duration={duration}')
+            logger.warning(f'Video playback timed out. duration={duration}')
             break
         time.sleep(2)
         ActionChains(browser) \
@@ -194,11 +221,12 @@ def wait_video_finish(duration: float, func: Callable[[], None],
             .perform()
 
 def video_play_jp(lesson: str, title: str):
+    global browser, logger
     try:
         browser.execute_script('dashPlayer.isReady();')
     except JavascriptException:
         return
-    print('Playing video {} ({}) with JP player (DashPlayer)...'.format(lesson, title))
+    logger.info('Playing video {} ({}) with JP player (DashPlayer)...'.format(lesson, title))
     timeout = time.time() + 60
     duration = 0
     while True:
@@ -209,13 +237,14 @@ def video_play_jp(lesson: str, title: str):
             browser.execute_script('dashPlayer.play();')
             break
         if time.time() > timeout:
-            print('dashPlayer initialization timed out.')
+            logger.warning('dashPlayer initialization timed out.')
             break
         time.sleep(2)
     wait_video_finish(duration, func = lambda : browser.execute_script('return dashPlayer.isPaused();'))
 
 def video_play_mp(lesson: str, title: str):
-    print('Playing video {} ({}) with MP player...'.format(lesson, title))
+    global browser, logger
+    logger.info('Playing video {} ({}) with MP player...'.format(lesson, title))
 
     # Set video playback speed
     mv = browser.find_element(By.ID, 'mv')
@@ -226,7 +255,7 @@ def video_play_mp(lesson: str, title: str):
         browser.execute_script(f'cPb.SetSpeed({PLAYBACK_RATE});')
         browser.execute_script('cPb.SetVol(0);')
     except JavascriptException:
-        traceback.print_exc()
+        logger.error(traceback.format_exc())
 
     # Check playback finished
     time.sleep(5)
@@ -237,6 +266,7 @@ def video_play_mp(lesson: str, title: str):
     # wait_video_finish(duration, driver_wait = lambda : ply_play.is_displayed())
 
 def video_play(lesson: str, title: str) -> PlayerType:
+    global browser, logger
     player_type = PlayerType.INVALID
     try:
         scoMainFrame = browser.find_element(By.NAME, 'scoMainFrame')
@@ -252,11 +282,12 @@ def video_play(lesson: str, title: str) -> PlayerType:
         video_play_jp(lesson, title)
     except NoSuchElementException:
         ...
-    print(f'Video {title} finished.')
+    logger.info(f'Video {title} finished.')
     return player_type
 
 def login():
     # Login
+    global browser, logger
     accountlinkbt = browser.find_element(By.ID, 'accountlinkbt')
     accountlinkbt.click()
     txt_account = browser.find_element(By.ID, 'AccountPassword_simple_txt_account')
@@ -267,17 +298,20 @@ def login():
     btn_LoginHandler.click()
 
 def apply(course: str):
+    global browser, logger
     course_action = browser.find_element(By.CSS_SELECTOR, '.course-action button')
-    print(course_action.text)
     if '報名' in course_action.text:
         browser.execute_script("enployCourse('{}');".format(os.path.split(course)[-1]))
         btn_success = browser.find_element(By.CSS_SELECTOR, '.modal-footer button.btn-success')
         btn_success.click()
         browser.implicitly_wait(30)
+    else:
+        logger.debug('course_action.text='.format(course_action.text))
     browser.execute_script("gotoCourse('{}');".format(os.path.split(course)[-1]))
     browser.implicitly_wait(30)
 
 def switch_to_pathtree():
+    global browser, logger
     browser.switch_to.default_content()
     f_ = browser.find_element(By.XPATH, 'html/frameset/frameset/frameset/frameset/frame[@id="s_catalog"]')
     browser.switch_to.frame(f_)
@@ -285,6 +319,7 @@ def switch_to_pathtree():
     browser.switch_to.frame(pathtree)
 
 def get_coursename() -> str:
+    global browser, logger
     f_ = browser.find_element(By.XPATH, 'html/frameset/frameset/frameset/frame[@id="s_sysbar"]')
     browser.switch_to.frame(f_)
     coursename = browser.find_element(By.CLASS_NAME, 'coursename')
@@ -292,6 +327,7 @@ def get_coursename() -> str:
 
 def learn(course: str, answers: str):
     # Open course page then login
+    global browser, logger
     if WEBDRIVER == WebDriverType.CHROME:
         chrome_options = webdriver.ChromeOptions()
         # chrome_options.add_argument('--blink-settings=imagesEnabled=false')
@@ -299,9 +335,8 @@ def learn(course: str, answers: str):
         browser = webdriver.Chrome(options=chrome_options)
     elif WEBDRIVER == WebDriverType.EDGE:
         browser = webdriver.Edge()
-        browser = webdriver.Edge(options=chrome_options)
 
-    print('Opening course at {}'.format(course))
+    logger.info('Opening course at {}'.format(course))
     browser.get(course)
     browser.implicitly_wait(30)
 
@@ -330,7 +365,7 @@ def learn(course: str, answers: str):
         lambda driver: browser.execute_script("return document.readyState") == "complete")
 
     coursename = get_coursename()
-    print(f'Opening course {coursename} ({course})...')
+    logger.info(f'Opening course {coursename} ({course})...')
 
     switch_to_pathtree()
 
@@ -347,17 +382,37 @@ def learn(course: str, answers: str):
                 if video_play(a_, t_) == PlayerType.INVALID:
                     if exam_right(): break
             except (NoSuchElementException, JavascriptException):
-                traceback.print_exc()
+                logger.error(traceback.format_exc())
         switch_to_pathtree()
 
+    if answers: exam_left(answers)
     questionnaire()
 
     browser.implicitly_wait(30)
     browser.close()
-    print(f'Course {coursename} finished.')
+    logger.info(f'Course {coursename} finished.')
     del browser
+
+def init_logger():
+    global logger
+    os.makedirs('logs', exist_ok=True)
+
+    formatter = logging.Formatter(u"%(asctime)s [%(threadName)-12.12s] [%(levelname)-5.5s]  %(message)s")
+
+    fileHandler = logging.handlers.RotatingFileHandler(
+        'logs/log', maxBytes=8000, backupCount=10, encoding='utf-8')
+    fileHandler.setFormatter(formatter)
+    logger.addHandler(fileHandler)
+
+    consoleHandler = logging.StreamHandler()
+    consoleHandler.setFormatter(formatter)
+    logger.addHandler(consoleHandler)
+
+    logger.setLevel(logging.INFO)
+    logger.info('Logger is initiated.')
 
 
 if __name__ == '__main__':
+    init_logger()
     for c_, a_, *_ in COURSES:
         learn(c_, a_)
