@@ -164,6 +164,8 @@ def questionnaire():
             alert.accept()
         except NoAlertPresentException:
             ...
+    
+    print('Questionnaire submitted.')
 
     browser.switch_to.window(browser.window_handles[0])
 
@@ -253,27 +255,8 @@ def video_play(lesson: str, title: str) -> PlayerType:
     print(f'Video {title} finished.')
     return player_type
 
-# Open course page then login
-for c_, *_ in COURSES:
-    if WEBDRIVER == WebDriverType.CHROME:
-        chrome_options = webdriver.ChromeOptions()
-        # chrome_options.add_argument('--blink-settings=imagesEnabled=false')
-        chrome_options.add_argument('--incognito')
-        browser = webdriver.Chrome(options=chrome_options)
-    elif WEBDRIVER == WebDriverType.EDGE:
-        browser = webdriver.Edge()
-        browser = webdriver.Edge(options=chrome_options)
-
-    print('Opening course at {}'.format(c_))
-    browser.get(c_)
-    browser.implicitly_wait(30)
-
-    course_info_bottom = browser.find_element(By.ID, 'course-info-bottom')
-    gotoCourse = course_info_bottom.find_element(By.TAG_NAME, 'button')
-    gotoCourse.click()
-    browser.execute_script("location.href='https://www.cp.gov.tw/portal/Clogin.aspx?ReturnUrl=https%3A%2F%2Felearn.hrd.gov.tw%2Fegov_login.php'")
-
-    # Login then open course page
+def login():
+    # Login
     accountlinkbt = browser.find_element(By.ID, 'accountlinkbt')
     accountlinkbt.click()
     txt_account = browser.find_element(By.ID, 'AccountPassword_simple_txt_account')
@@ -283,8 +266,54 @@ for c_, *_ in COURSES:
     txt_password.send_keys(PASSWORD)
     btn_LoginHandler.click()
 
+def apply(course: str):
+    course_action = browser.find_element(By.CSS_SELECTOR, '.course-action button')
+    print(course_action.text)
+    if '報名' in course_action.text:
+        browser.execute_script("enployCourse('{}');".format(os.path.split(course)[-1]))
+        btn_success = browser.find_element(By.CSS_SELECTOR, '.modal-footer button.btn-success')
+        btn_success.click()
+        browser.implicitly_wait(30)
+    browser.execute_script("gotoCourse('{}');".format(os.path.split(course)[-1]))
+    browser.implicitly_wait(30)
+
+def switch_to_pathtree():
+    browser.switch_to.default_content()
+    f_ = browser.find_element(By.XPATH, 'html/frameset/frameset/frameset/frameset/frame[@id="s_catalog"]')
+    browser.switch_to.frame(f_)
+    pathtree = browser.find_element(By.ID, 'pathtree')
+    browser.switch_to.frame(pathtree)
+
+def get_coursename() -> str:
+    f_ = browser.find_element(By.XPATH, 'html/frameset/frameset/frameset/frame[@id="s_sysbar"]')
+    browser.switch_to.frame(f_)
+    coursename = browser.find_element(By.CLASS_NAME, 'coursename')
+    return coursename.text
+
+def learn(course: str, answers: str):
+    # Open course page then login
+    if WEBDRIVER == WebDriverType.CHROME:
+        chrome_options = webdriver.ChromeOptions()
+        # chrome_options.add_argument('--blink-settings=imagesEnabled=false')
+        chrome_options.add_argument('--incognito')
+        browser = webdriver.Chrome(options=chrome_options)
+    elif WEBDRIVER == WebDriverType.EDGE:
+        browser = webdriver.Edge()
+        browser = webdriver.Edge(options=chrome_options)
+
+    print('Opening course at {}'.format(course))
+    browser.get(course)
+    browser.implicitly_wait(30)
+
+    course_info_bottom = browser.find_element(By.ID, 'course-info-bottom')
+    gotoCourse = course_info_bottom.find_element(By.TAG_NAME, 'button')
+    gotoCourse.click()
+    browser.execute_script("location.href='https://www.cp.gov.tw/portal/Clogin.aspx?ReturnUrl=https%3A%2F%2Felearn.hrd.gov.tw%2Fegov_login.php'")
+
+    login()
+
     try:
-        browser.execute_script("location.href='{}'".format(c_))
+        browser.execute_script("location.href='{}'".format(course))
         time.sleep(15)
     except UnexpectedAlertPresentException:
         try:
@@ -295,30 +324,15 @@ for c_, *_ in COURSES:
             ...
     browser.implicitly_wait(30)
 
-    course_action = browser.find_element(By.CSS_SELECTOR, '.course-action button')
-    print(course_action.text)
-    if '報名' in course_action.text:
-        browser.execute_script("enployCourse('{}');".format(os.path.split(c_)[-1]))
-        btn_success = browser.find_element(By.CSS_SELECTOR, '.modal-footer button.btn-success')
-        btn_success.click()
-        browser.implicitly_wait(30)
-    browser.execute_script("gotoCourse('{}');".format(os.path.split(c_)[-1]))
-    browser.implicitly_wait(30)
+    apply(course)
 
     WebDriverWait(webdriver, 30).until(
         lambda driver: browser.execute_script("return document.readyState") == "complete")
-    
-    f_ = browser.find_element(By.XPATH, 'html/frameset/frameset/frameset/frame[@id="s_sysbar"]')
-    browser.switch_to.frame(f_)
-    coursename = browser.find_element(By.CLASS_NAME, 'coursename')
-    coursename = coursename.text
-    print(f'Opening course {coursename} ({c_})...')
-    browser.switch_to.default_content()
 
-    f_ = browser.find_element(By.XPATH, 'html/frameset/frameset/frameset/frameset/frame[@id="s_catalog"]')
-    browser.switch_to.frame(f_)
-    pathtree = browser.find_element(By.ID, 'pathtree')
-    browser.switch_to.frame(pathtree)
+    coursename = get_coursename()
+    print(f'Opening course {coursename} ({course})...')
+
+    switch_to_pathtree()
 
     displayPanel = browser.find_element(By.ID, 'displayPanel')
     items = displayPanel.find_elements(By.TAG_NAME, 'a')
@@ -334,13 +348,7 @@ for c_, *_ in COURSES:
                     if exam_right(): break
             except (NoSuchElementException, JavascriptException):
                 traceback.print_exc()
-                ...
-
-        browser.switch_to.default_content()
-        f_ = browser.find_element(By.XPATH, 'html/frameset/frameset/frameset/frameset/frame[@id="s_catalog"]')
-        browser.switch_to.frame(f_)
-        pathtree = browser.find_element(By.ID, 'pathtree')
-        browser.switch_to.frame(pathtree)
+        switch_to_pathtree()
 
     questionnaire()
 
@@ -349,3 +357,7 @@ for c_, *_ in COURSES:
     print(f'Course {coursename} finished.')
     del browser
 
+
+if __name__ == '__main__':
+    for c_, a_, *_ in COURSES:
+        learn(c_, a_)
