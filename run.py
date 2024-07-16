@@ -63,13 +63,13 @@ def switch_to_new_window():
         logger.info('window', w_.title)
     browser.switch_to.window(browser.window_handles[1])
 
-def exam_left() -> bool:
+def exam_left_attempt() -> bool:
     '''
     The exam is opened from the left panel.
     '''
     global browser, logger
     logger.info('Perform test from left panel.')
-    is_test = False
+    success = False
 
     # This is not working because the questions are randomized and answers are not provided.
     # return is_test
@@ -106,12 +106,32 @@ def exam_left() -> bool:
         # aindex += 1
 
     submit_answers()
+    print('Test submitted.')
+
+    wait = WebDriverWait(browser, timeout=60)
+    wait.until(expected_conditions.url_contains('/view_result.php'))
+
+    form = browser.find_element(By.TAG_NAME, 'form')
+    try:
+        result = form.find_element(By.TAG_NAME, 'span')
+        if '不及格' not in result.text:
+            logger.info('Test passed.')
+            success = True
+    except NoSuchElementException:
+        ...
+    browser.implicitly_wait(60)
+
     browser.close()
     browser.switch_to.window(browser.window_handles[0])
 
-    print('Test submitted.')
+    return success
 
-    return is_test
+def exam_left():
+    global browser, logger
+    retry_count = 10
+    while retry_count:
+        if exam_left_attempt(): break
+        retry_count -= 1
 
 def exam_right() -> bool:
     '''
