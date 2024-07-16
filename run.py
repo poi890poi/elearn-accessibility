@@ -38,12 +38,41 @@ def switch_to_left_panel():
     f_ = browser.find_element(By.XPATH, 'html/frameset/frameset/frame[@id="moocSysbar"]')
     browser.switch_to.frame(f_)
 
-def exam_left(answers: str) -> bool:
+def submit_answers():
+    global browser, logger
+    submit = browser.find_element(By.CSS_SELECTOR, 'input[type="submit"]')
+    submit.click()
+    browser.implicitly_wait(60)
+    for _ in range(2):
+        try:
+            wait = WebDriverWait(browser, timeout=2)
+            alert = wait.until(lambda d : d.switch_to.alert)
+            alert.accept()
+        except NoAlertPresentException:
+            ...
+
+def switch_to_new_window():
+    global browser, logger
+    try:
+        wait = WebDriverWait(browser, timeout=2)
+        wait.until(expected_conditions.number_of_windows_to_be(2))
+    except TimeoutException:
+        logger.warning('Unable to find window.')
+        return
+    for w_ in browser.window_handles:
+        logger.info('window', w_.title)
+    browser.switch_to.window(browser.window_handles[1])
+
+def exam_left() -> bool:
     '''
     The exam is opened from the left panel.
     '''
     global browser, logger
+    logger.info('Perform test from left panel.')
     is_test = False
+
+    # This is not working because the questions are randomized and answers are not provided.
+    # return is_test
 
     switch_to_left_panel()
     moocSidebar = browser.find_element(By.ID, 'moocSidebar')
@@ -52,34 +81,35 @@ def exam_left(answers: str) -> bool:
     browser.implicitly_wait(60)
 
     switch_to_right_panel()
-    main_text = moocSidebar.find_element(By.PARTIAL_LINK_TEXT, '進行測驗')
-    q_ = main_text.find_element(By.XPATH, './../..')
-    browser.execute_script(q_.get_attribute('onclick'))
+    onclicks = browser.find_elements(By.CSS_SELECTOR, 'div[onclick]')
+    for c_ in onclicks:
+        if 'togo' in c_.get_attribute('onclick'):
+            browser.execute_script(c_.get_attribute('onclick'))
+            break
     browser.implicitly_wait(60)
 
-    try:
-        wait = WebDriverWait(browser, timeout=2)
-        wait.until(expected_conditions.number_of_windows_to_be(2))
-    except TimeoutException:
-        logger.warning('Unable to find exam window.')
-        return
-    for w_ in browser.window_handles:
-        logger.info('window', w_.title)
-    browser.switch_to.window(browser.window_handles[1])
+    switch_to_new_window()
 
     examBegin = browser.find_element(By.CSS_SELECTOR, 'input[value="開始作答"]')
     examBegin.click()
 
     questions = browser.find_elements(By.CSS_SELECTOR, 'ol[type="a"]')
-    aindex = 0
     for q_ in questions:
-        a_ = int(ANS_OPTIONS[answers[aindex]][-1]) - 1
+        logger.info('Q: {}'.format(q_.find_element(By.XPATH, './..').text))
+        # a_ = int(ANS_OPTIONS[answers[aindex]][-1]) - 1
         options = q_.find_elements(By.TAG_NAME, 'input')
-        options[a_].click()
-        aindex += 1
+        for o_ in options:
+            logger.debug(o_.find_element(By.XPATH, './../..').text)
+        options[-1].click()
+        # print(q_, ANS_OPTIONS[answers[aindex]], a_, len(options))
+        # options[a_].click()
+        # aindex += 1
 
-    input('...')
+    submit_answers()
+    browser.close()
     browser.switch_to.window(browser.window_handles[0])
+
+    print('Test submitted.')
 
     return is_test
 
@@ -164,36 +194,16 @@ def questionnaire():
     browser.execute_script(begin.get_attribute('onclick'))
     browser.implicitly_wait(60)
 
-    try:
-        wait = WebDriverWait(browser, timeout=2)
-        wait.until(expected_conditions.number_of_windows_to_be(2))
-    except TimeoutException:
-        logger.warning('Unable to find questionnaire window.')
-        return
-    for w_ in browser.window_handles:
-        logger.debug('window', w_.title)
-    browser.switch_to.window(browser.window_handles[1])
+    switch_to_new_window()
 
     questions = browser.find_elements(By.CSS_SELECTOR, 'ol[type="a"]')
     for q_ in questions:
         options = q_.find_elements(By.TAG_NAME, 'input')
         options[0].click()
 
-    submit = browser.find_element(By.CSS_SELECTOR, 'input[type="submit"]')
-    submit.click()
-    browser.implicitly_wait(60)
-
-    for _ in range(2):
-        try:
-            wait = WebDriverWait(browser, timeout=2)
-            alert = wait.until(lambda d : d.switch_to.alert)
-            alert.accept()
-        except NoAlertPresentException:
-            ...
-
-    logger.info('Questionnaire submitted.')
-
+    submit_answers()
     browser.switch_to.window(browser.window_handles[0])
+    logger.info('Questionnaire submitted.')
 
 def wait_video_finish(duration: float, func: Callable[[], None],
                       driver_wait: Callable[[], None] = None):
@@ -385,7 +395,7 @@ def learn(course: str, answers: str):
                 logger.error(traceback.format_exc())
         switch_to_pathtree()
 
-    if answers: exam_left(answers)
+    exam_left()
     questionnaire()
 
     browser.implicitly_wait(30)

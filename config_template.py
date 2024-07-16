@@ -6,7 +6,7 @@ PASSWORD = 'password'
 
 DOMAIN = 'www.domain.com'
 COURSES = [
-    (f'https://{DOMAIN}/info/10035565', 'CDDDBDBBBB'),
+    (f'https://{DOMAIN}/info/10035565', ''),
     (f'https://{DOMAIN}/info/10036252', ''),
     (f'https://{DOMAIN}/info/10036250', ''),
     (f'https://{DOMAIN}/info/10036256', ''),
