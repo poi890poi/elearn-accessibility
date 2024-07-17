@@ -5,6 +5,7 @@ import os.path
 import sys
 import logging
 import logging.handlers
+import json
 from collections.abc import Callable, Awaitable
 
 from selenium import webdriver
@@ -20,6 +21,7 @@ from config import *
 class A():
     browser = None
     logger = logging.getLogger(__name__)
+    cache = dict()
 
     @staticmethod
     def init_browser():
@@ -157,23 +159,25 @@ class A():
         return success
 
     @staticmethod
-    def exam_left():
+    def exam_left() -> bool:
         retry_count = 30
         while retry_count:
-            if A.exam_left_attempt(): break
+            if A.exam_left_attempt():
+                return True
             retry_count -= 1
+        return False
 
     @staticmethod
     def exam_right() -> bool:
         '''
         The exam is opened from the right panel, as a lesson.
         '''
-        is_test = False
+        success = False
         try:
             A.browser.execute_script('go(goExam,500);')
             A.browser.implicitly_wait(5)
             A.logger.info('Performing test...')
-            is_test = True
+            success = False
             exam_index = 0
             while True:
                 try:
@@ -214,6 +218,7 @@ class A():
                         score = score.get_attribute('class')
                         if 'pass_color' in score:
                             A.logger.info('Test passed.')
+                            success = True
                             break
                         elif 'nopass_color' in score:
                             A.logger.warning('Test failed. Please re-test.')
@@ -228,7 +233,7 @@ class A():
                 time.sleep(1)
         except (NoSuchElementException, JavascriptException):
             ...    
-        return is_test
+        return success
 
     @staticmethod
     def questionnaire():
@@ -281,11 +286,11 @@ class A():
                 .perform()
 
     @staticmethod
-    def video_play_jp(lesson: str, title: str):
+    def video_play_jp(lesson: str, title: str) -> bool:
         try:
             A.browser.execute_script('dashPlayer.isReady();')
         except JavascriptException:
-            return
+            return False
         A.logger.info('Playing video {} ({}) with JP player (DashPlayer)...'.format(lesson, title))
         timeout = time.time() + 60
         duration = 0
@@ -301,6 +306,7 @@ class A():
                 break
             time.sleep(2)
         A.wait_video_finish(duration, func = lambda : A.browser.execute_script('return dashPlayer.isPaused();'))
+        return True
 
     @staticmethod
     def video_play_mp(lesson: str, title: str):
@@ -323,7 +329,6 @@ class A():
         ply_pause = A.browser.find_element(By.ID, 'ply_pause')
         duration = A.browser.execute_script("return document.getElementsByTagName('video')[0].duration;")
         A.wait_video_finish(duration, func = lambda : A.browser.execute_script('return (cPb.time===-1);'))
-        # A.wait_video_finish(duration, driver_wait = lambda : ply_play.is_displayed())
 
     @staticmethod
     def video_play(lesson: str, title: str) -> PlayerType:
@@ -331,15 +336,15 @@ class A():
         try:
             scoMainFrame = A.browser.find_element(By.NAME, 'scoMainFrame')
             A.browser.switch_to.frame(scoMainFrame)
-            player_type = PlayerType.MP
             A.video_play_mp(lesson, title)
+            player_type = PlayerType.MP
         except NoSuchElementException:
             ...
         try:
             f_ = A.browser.find_element(By.TAG_NAME, 'iframe')
             A.browser.switch_to.frame(f_)
-            player_type = PlayerType.JP
-            A.video_play_jp(lesson, title)
+            if A.video_play_jp(lesson, title):
+                player_type = PlayerType.JP
         except NoSuchElementException:
             ...
         A.logger.info(f'Video {title} finished.')
@@ -386,8 +391,29 @@ class A():
         return coursename.text
 
     @staticmethod
+    def load_cache():
+        try:
+            with open('logs/cache.json', 'r', encoding='utf-8') as fp:
+                A.cache = json.load(fp)
+        except (FileNotFoundError, json.JSONDecodeError):
+            ...
+
+    @staticmethod
+    def save_cache():
+        with open('logs/cache.json', 'w', encoding='utf-8') as fp:
+            json.dump(A.cache, fp, indent=4)
+
+    @staticmethod
     def learn(course: str, answers: str):
         # Open course page then login
+        courseid = os.path.split(course)[-1]
+        try:
+            if A.cache[courseid]['passed']:
+                coursename = A.cache[courseid]['name']
+                A.logger.info(f'Course {course}: {coursename} passed already; skip.')
+                return
+        except KeyError:
+            ...
         A.init_browser()
 
         A.logger.info('Opening course at {}'.format(course))
@@ -420,6 +446,12 @@ class A():
 
         coursename = A.get_coursename()
         A.logger.info(f'Opening course {coursename} ({course})...')
+        if courseid not in A.cache: A.cache[courseid] = {
+            'id': courseid,
+            'name': coursename,
+            'url': course,
+            'lessons': dict(),
+        }
 
         A.switch_to_pathtree()
 
@@ -431,16 +463,41 @@ class A():
                 A.browser.execute_script(a_)
                 A.browser.implicitly_wait(60)
 
+                lessonid = a_.split(',')[-2]
+                try:
+                    if A.cache[courseid]['lessons'][lessonid]['played']:
+                        lessonname = A.cache[courseid]['lessons'][lessonid]['name']
+                        A.logger.info(f'Lesson {lessonid}: {lessonname} played already; skip.')
+                        continue
+                except KeyError:
+                    ...
+                if lessonid not in A.cache[courseid]['lessons']:
+                    A.cache[courseid]['lessons'][lessonid] = {
+                        'id': lessonid,
+                        'name': t_,
+                    }
+
                 try:
                     A.switch_to_right_panel()
-                    if A.video_play(a_, t_) == PlayerType.INVALID:
-                        if A.exam_right(): break
+                    ptype = A.video_play(a_, t_)
+                    if ptype == PlayerType.INVALID:
+                        if A.exam_right():
+                            A.cache[courseid]['passed'] = True
+                            break
+                    else:
+                        A.cache[courseid]['lessons'][lessonid]['played'] = True
+                        A.cache[courseid]['lessons'][lessonid]['player'] = ptype.name
+                        A.save_cache()
                 except (NoSuchElementException, JavascriptException):
                     A.logger.error(traceback.format_exc())
             A.switch_to_pathtree()
 
-        A.exam_left()
+        if A.exam_left():
+            A.cache[courseid]['passed'] = True
         A.questionnaire()
+
+        A.cache[courseid]['qsubmitted'] = True
+        A.save_cache()
 
         A.browser.implicitly_wait(30)
         A.browser.close()
@@ -449,5 +506,6 @@ class A():
 
 if __name__ == '__main__':
     A.init_logger()
+    A.load_cache()
     for c_, a_, *_ in COURSES:
         A.learn(c_, a_)
