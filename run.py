@@ -35,7 +35,8 @@ class A():
     def init_logger():
         os.makedirs('logs', exist_ok=True)
 
-        formatter = logging.Formatter(u"%(asctime)s [%(threadName)-12.12s] [%(levelname)-5.5s]  %(message)s")
+        formatter = logging.Formatter(u"[%(asctime)s] %(levelname)s [%(name)s.%(funcName)s:%(lineno)d] %(message)s")
+                                    #   "%(asctime)s [%(threadName)-12.12s] [%(levelname)-5.5s]  %(message)s")
 
         fileHandler = logging.handlers.RotatingFileHandler(
             'logs/log', maxBytes=8000, backupCount=10, encoding='utf-8')
@@ -367,7 +368,7 @@ class A():
         else:
             A.logger.debug('course_action.text='.format(course_action.text))
         A.browser.execute_script("gotoCourse('{}');".format(os.path.split(course)[-1]))
-        A.browser.implicitly_wait(30)
+        A.browser.implicitly_wait(60)
 
     @staticmethod
     def switch_to_pathtree():
@@ -410,11 +411,11 @@ class A():
                 alert.accept()
             except NoAlertPresentException:
                 ...
-        A.browser.implicitly_wait(30)
+        A.browser.implicitly_wait(60)
 
         A.apply(course)
 
-        WebDriverWait(webdriver, 30).until(
+        WebDriverWait(webdriver, 60).until(
             lambda driver: A.browser.execute_script("return document.readyState") == "complete")
 
         coursename = A.get_coursename()
