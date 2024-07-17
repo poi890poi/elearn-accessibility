@@ -92,7 +92,7 @@ class A():
             A.logger.warning('Unable to find window.')
             return
         for w_ in A.browser.window_handles:
-            A.logger.info('window', w_.title)
+            A.logger.info(f'window: title={w_.title}')
         A.browser.switch_to.window(A.browser.window_handles[1])
 
     @staticmethod
@@ -160,6 +160,7 @@ class A():
 
     @staticmethod
     def exam_left() -> bool:
+        return False    # This is not working
         retry_count = 30
         while retry_count:
             if A.exam_left_attempt():
