@@ -36,3 +36,8 @@ class WebDriverType(Enum):
 WEBDRIVER = WebDriverType.CHROME
 
 GOOGLE_API_KEY = ''
+
+class WindowHandle(Enum):
+    COURSE = 0
+    EXAM = 1
+    QUESTIONNAIRE = 2
