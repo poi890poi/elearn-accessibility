@@ -25,6 +25,8 @@ pip install selenium
 pip install -U google-generativeai
 ```
 
+API Key is needed to use Google Generative AI API. Sign in [Google Cloud](https://cloud.google.com/) and create API Key in the [Credentials page](https://console.cloud.google.com/apis/credentials). To configure API Key, refer to the [Configuration](#configuration) section in this document.
+
 ### WebDriver
 
 Visit [Selenium downloads section](https://www.selenium.dev/downloads/) for more information.
