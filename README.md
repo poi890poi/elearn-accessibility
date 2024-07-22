@@ -41,6 +41,7 @@ Rename `config_template.py` to `config.py`. Open it with a text editor and modif
 - **USERNAME**: Your account name to sign into HRD E-Learning.
 - **PASSWORD**: Your password to sign into HRD E-Learning.
 - **DOMAIN**: Domain name of HRD E-Learning.
+- **GOOGLE_API_KEY**: API Key for Google Generative AI API.
 
 ### Run
 
