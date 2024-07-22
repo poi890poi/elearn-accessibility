@@ -17,6 +17,14 @@ pip install pip --upgrade
 pip install selenium
 ```
 
+### Google Generative AI (optional)
+
+[Google AI Python SDK for the Gemini API](https://github.com/google-gemini/generative-ai-python) provides AI examiner functionality.
+
+```
+pip install -U google-generativeai
+```
+
 ### WebDriver
 
 Visit [Selenium downloads section](https://www.selenium.dev/downloads/) for more information.
