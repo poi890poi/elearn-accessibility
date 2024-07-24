@@ -14,14 +14,17 @@ from selenium.webdriver.support.wait import WebDriverWait
 from selenium.common.exceptions import *
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.support import expected_conditions
+import selenium.webdriver.common.keys as keys
 
 from config import *
+from examiner import E as Examiner
 
 
 class A():
     browser = None
     logger = logging.getLogger(__name__)
     cache = dict()
+    windows = dict()
 
     @staticmethod
     def init_browser():
@@ -84,16 +87,19 @@ class A():
                 ...
 
     @staticmethod
-    def switch_to_new_window():
+    def switch_to_new_window(expected_wnd_count: int):
+        print(f'expected_wnd_count={expected_wnd_count}, current={len(A.browser.window_handles)}')
+        for i_, w_ in enumerate(A.browser.window_handles):
+            A.logger.debug(f'window {i_}: title={w_.title()}')
         try:
-            wait = WebDriverWait(A.browser, timeout=2)
-            wait.until(expected_conditions.number_of_windows_to_be(2))
+            wait = WebDriverWait(A.browser, timeout=30)
+            wait.until(expected_conditions.number_of_windows_to_be(expected_wnd_count))
         except TimeoutException:
-            A.logger.warning('Unable to find window.')
+            A.logger.warning('Unable to find new window.')
             return
-        for w_ in A.browser.window_handles:
-            A.logger.info(f'window: title={w_.title}')
-        A.browser.switch_to.window(A.browser.window_handles[1])
+        target = A.browser.window_handles[-1]
+        A.logger.info(f'Switch to window {target.title()}')
+        A.browser.switch_to.window(target)
 
     @staticmethod
     def exam_left_attempt() -> bool:
@@ -112,6 +118,8 @@ class A():
         exam.click()
         A.browser.implicitly_wait(60)
 
+        wndcount = len(A.browser.window_handles)
+
         A.switch_to_right_panel()
         onclicks = A.browser.find_elements(By.CSS_SELECTOR, 'div[onclick]')
         for c_ in onclicks:
@@ -120,22 +128,38 @@ class A():
                 break
         A.browser.implicitly_wait(60)
 
-        A.switch_to_new_window()
+        A.switch_to_new_window(wndcount + 1)
 
         examBegin = A.browser.find_element(By.CSS_SELECTOR, 'input[value="開始作答"]')
         examBegin.click()
 
+        qwnd = A.browser.current_window_handle
         questions = A.browser.find_elements(By.CSS_SELECTOR, 'ol[type="a"]')
+        qtxts = []
         for q_ in questions:
             A.logger.info('Q: {}'.format(q_.find_element(By.XPATH, './..').text))
-            # a_ = int(ANS_OPTIONS[answers[aindex]][-1]) - 1
+            qtxt = [q_.find_element(By.XPATH, './..').text]
+            aindex = 0
             options = q_.find_elements(By.TAG_NAME, 'input')
             for o_ in options:
                 A.logger.debug(o_.find_element(By.XPATH, './../..').text)
-            options[-1].click()
-            # print(q_, ANS_OPTIONS[answers[aindex]], a_, len(options))
-            # options[a_].click()
-            # aindex += 1
+                qtxt.append(str(aindex) + ': ' + o_.find_element(By.XPATH, './../..').text)
+                aindex += 1
+            if len(qtxt) == 3 and qtxt[1].strip() == '0:' and qtxt[2].strip() == '1:':
+                qtxt[1] = '0: 是'
+                qtxt[2] = '1: 否'
+            qtxt = '\n'.join(qtxt)
+            qtxts.append(qtxt)
+            A.logger.debug(qtxt)
+
+            a_ = Examiner.query(qtxt)
+            A.logger.debug('A: ' + a_)
+            a_ = int(''.join(c for c in a_ if c.isdigit()))
+            options[a_].click()
+
+        for q_ in qtxts:
+            a_ = Examiner.query(q_)
+            a_ = int(''.join(c for c in a_ if c.isdigit()))
 
         A.submit_answers()
         print('Test submitted.')
@@ -154,14 +178,13 @@ class A():
         A.browser.implicitly_wait(60)
 
         A.browser.close()
-        A.browser.switch_to.window(A.browser.window_handles[0])
+        A.browser.switch_to.window(A.windows[WindowHandle.COURSE])
 
         return success
 
     @staticmethod
     def exam_left() -> bool:
-        return False    # This is not working
-        retry_count = 30
+        retry_count = 1
         while retry_count:
             if A.exam_left_attempt():
                 return True
@@ -245,12 +268,14 @@ class A():
         q_.click()
         A.browser.implicitly_wait(60)
 
+        wndcount = len(A.browser.window_handles)
+
         A.switch_to_right_panel()
         begin = A.browser.find_element(By.CSS_SELECTOR, 'div[onclick]')
         A.browser.execute_script(begin.get_attribute('onclick'))
         A.browser.implicitly_wait(60)
 
-        A.switch_to_new_window()
+        A.switch_to_new_window(wndcount + 1)
 
         questions = A.browser.find_elements(By.CSS_SELECTOR, 'ol[type="a"]')
         for q_ in questions:
@@ -258,7 +283,7 @@ class A():
             options[0].click()
 
         A.submit_answers()
-        A.browser.switch_to.window(A.browser.window_handles[0])
+        A.browser.switch_to.window(A.windows[WindowHandle.COURSE])
         A.logger.info('Questionnaire submitted.')
 
     @staticmethod
@@ -405,6 +430,26 @@ class A():
             json.dump(A.cache, fp, indent=4)
 
     @staticmethod
+    def close_alerts(explicit_wait: bool = False):
+        if explicit_wait:
+            while True:
+                try:
+                    wait = WebDriverWait(A.browser, timeout=30)
+                    alert = wait.until(lambda d : d.switch_to.alert)
+                    alert.accept()
+                    break
+                except NoAlertPresentException:
+                    time.sleep(2)
+        while True:
+            try:
+                wait = WebDriverWait(A.browser, timeout=30)
+                alert = wait.until(lambda d : d.switch_to.alert)
+                alert.accept()
+            except NoAlertPresentException:
+                break
+
+
+    @staticmethod
     def learn(course: str, answers: str):
         # Open course page then login
         courseid = os.path.split(course)[-1]
@@ -417,9 +462,14 @@ class A():
             ...
         A.init_browser()
 
+        wndcount = len(A.browser.window_handles)
+        A.browser.execute_script('window.open("");')
+        A.switch_to_new_window(wndcount + 1)
+
         A.logger.info('Opening course at {}'.format(course))
         A.browser.get(course)
-        A.browser.implicitly_wait(30)
+        A.browser.implicitly_wait(60)
+        A.windows[WindowHandle.COURSE] = A.browser.current_window_handle
 
         course_info_bottom = A.browser.find_element(By.ID, 'course-info-bottom')
         gotoCourse = course_info_bottom.find_element(By.TAG_NAME, 'button')

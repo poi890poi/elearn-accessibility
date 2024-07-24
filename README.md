@@ -17,6 +17,16 @@ pip install pip --upgrade
 pip install selenium
 ```
 
+### Google Generative AI (optional)
+
+[Google AI Python SDK for the Gemini API](https://github.com/google-gemini/generative-ai-python) provides AI examiner functionality.
+
+```
+pip install -U google-generativeai
+```
+
+API Key is needed to use Google Generative AI API. Sign in [Google Cloud](https://cloud.google.com/) and create API Key in the [Credentials page](https://console.cloud.google.com/apis/credentials). To configure API Key, refer to the [Configuration](#configuration) section in this document.
+
 ### WebDriver
 
 Visit [Selenium downloads section](https://www.selenium.dev/downloads/) for more information.
@@ -31,6 +41,7 @@ Rename `config_template.py` to `config.py`. Open it with a text editor and modif
 - **USERNAME**: Your account name to sign into HRD E-Learning.
 - **PASSWORD**: Your password to sign into HRD E-Learning.
 - **DOMAIN**: Domain name of HRD E-Learning.
+- **GOOGLE_API_KEY**: API Key for Google Generative AI API.
 
 ### Run
 
